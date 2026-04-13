@@ -9,6 +9,55 @@ import type {
   MultiTurnResult,
 } from "./types.ts";
 
+const judgeSchema = z.object({
+  score: z.number().min(0).max(10).describe("Score from 0-10 where 10 is best"),
+  reasoning: z.string().describe("Brief explanation for the score"),
+});
+
+export async function llmJudge(
+  output: MultiTurnResult,
+  target: MultiTurnTarget,
+): Promise<number> {
+  const result = await generateObject({
+    model: openai("gpt-5.1"),
+    schema: judgeSchema,
+    schemaName: "evaluation",
+    providerOptions: {
+      openai: {
+        reasoningEffort: "high",
+      },
+    },
+    schemaDescription: "Evaluation of an AI agent response",
+    messages: [
+      {
+        role: "system",
+        content: `You are an evaluation judge. Score the agent's response on a scale of 1-10.
+
+Scoring criteria:
+- 10: Response fully addresses the task using tool results correctly
+- 7-9: Response is mostly correct with minor issues
+- 4-6: Response partially addresses the task
+- 1-3: Response is mostly incorrect or irrelevant`,
+      },
+      {
+        role: "user",
+        content: `Task: ${target.originalTask}
+
+Tools called: ${JSON.stringify(output.toolCallOrder)}
+Tool results provided: ${JSON.stringify(target.mockToolResults)}
+
+Agent's final response:
+${output.text}
+
+Evaluate if this response correctly uses the tool results to answer the task.`,
+      },
+    ],
+  });
+
+  // Convert 1-10 score to 0-1 range
+  return result.object.score / 10;
+}
+
 export function toolsSelected(
   output: SingleTurnResult | MultiTurnResult,
   target: EvalTarget | MultiTurnTarget,

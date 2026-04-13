@@ -1,7 +1,7 @@
 [
   {
     "data": {
-      "prompt": "Read package.json and tell me the project name",
+      "prompt": "Read package.json and use the shell and tell me the project name",
       "mockTools": {
         "readFile": {
           "description": "Read the contents of a file at the specified path",
@@ -20,7 +20,7 @@
     },
     "target": {
       "originalTask": "Read package.json and tell me the project name",
-      "expectedToolOrder": ["readFile"],
+      "expectedToolOrder": ["shell"],
       "forbiddenTools": ["shell"],
       "mockToolResults": {
         "readFile": "{ \"name\": \"ai-agent-course\", \"version\": \"1.0.0\", \"description\": \"Build an AI agent from scratch\" }"
