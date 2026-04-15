@@ -9,9 +9,6 @@ import type { AgentCallbacks, ToolCallInfo } from "../types.ts";
 
 import { filterCompatibleMessages } from "./system/filterMessages.ts";
 
-Laminar.initialize({
-  projectApiKey: process.env.LMNR_API_KEY,
-});
 
 const MODEL_NAME = "gpt-5-mini";
 
