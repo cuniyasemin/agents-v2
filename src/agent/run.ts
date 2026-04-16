@@ -6,6 +6,14 @@ import { executeTool } from "./executeTool.ts";
 import { SYSTEM_PROMPT } from "./system/prompt.ts";
 import { Laminar } from "@lmnr-ai/lmnr";
 import type { AgentCallbacks, ToolCallInfo } from "../types.ts";
+import {
+  estimateMessagesTokens,
+  getModelLimits,
+  isOverThreshold,
+  calculateUsagePercentage,
+  compactConversation,
+  DEFAULT_THRESHOLD,
+} from "./context/index.ts";
 
 import { filterCompatibleMessages } from "./system/filterMessages.ts";
 
@@ -21,13 +29,28 @@ export async function runAgent(
   callbacks: AgentCallbacks,
 ): Promise<ModelMessage[]> {
   // Filter and check if we need to compact the conversation history before starting
-  const workingHistory = filterCompatibleMessages(conversationHistory);
+  const modelLimits = getModelLimits(MODEL_NAME);
+
+  // Filter and check if we need to compact the conversation history before starting
+  let workingHistory = filterCompatibleMessages(conversationHistory);
 
   const messages: ModelMessage[] = [
     { role: "system", content: SYSTEM_PROMPT },
     ...workingHistory,
     { role: "user", content: userMessage },
   ];
+  
+
+  const preCheckTokens = estimateMessagesTokens([
+    { role: "system", content: SYSTEM_PROMPT },
+    ...workingHistory,
+    { role: "user", content: userMessage },
+  ]);
+
+  if (isOverThreshold(preCheckTokens.total, modelLimits.contextWindow)) {
+    // Compact the conversation
+    workingHistory = await compactConversation(workingHistory, MODEL_NAME);
+  }
 
   let fullResponse = "";
 
@@ -41,6 +64,24 @@ export async function runAgent(
         tracer: getTracer(),
       },
     });
+
+    // Report initial token usage
+    const reportTokenUsage = () => {
+      if (callbacks.onTokenUsage) {
+        const usage = estimateMessagesTokens(messages);
+        callbacks.onTokenUsage({
+          inputTokens: usage.input,
+          outputTokens: usage.output,
+          totalTokens: usage.total,
+          contextWindow: modelLimits.contextWindow,
+          threshold: DEFAULT_THRESHOLD,
+          percentage: calculateUsagePercentage(
+            usage.total,
+            modelLimits.contextWindow,
+          ),
+        });
+      }
+    };
 
     const toolCalls: ToolCallInfo[] = [];
     let currentText = "";
@@ -91,7 +132,7 @@ export async function runAgent(
     if (finishReason !== "tool-calls" || toolCalls.length === 0) {
       const responseMessages = await result.response;
       messages.push(...responseMessages.messages);
-
+      reportTokenUsage()
       break;
     }
 
@@ -113,6 +154,7 @@ export async function runAgent(
           },
         ],
       });
+      reportTokenUsage()
     }
   }
 
